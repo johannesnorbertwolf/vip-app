@@ -1,0 +1,31 @@
+name: VIPApp
+options:
+  bundleIdPrefix: nl.vipprototype
+  deploymentTarget:
+    iOS: "17.0"
+packages:
+  SwiftSoup:
+    url: https://github.com/scinfu/SwiftSoup
+    from: 2.7.0
+targets:
+  VIPApp:
+    type: application
+    platform: iOS
+    sources: [Sources]
+    dependencies:
+      - package: SwiftSoup
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: nl.vipprototype.app
+        MARKETING_VERSION: "0.1"
+        CURRENT_PROJECT_VERSION: "1"
+        SWIFT_VERSION: "5.0"
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: VIP
+        INFOPLIST_KEY_NSCameraUsageDescription: "Scan the board's QR code at events to collect loyalty points."
+        INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription: "Save VIP photos to your photo library."
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_UISupportedInterfaceOrientations: UIInterfaceOrientationPortrait
+        TARGETED_DEVICE_FAMILY: "1"
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: ${DEVELOPMENT_TEAM}   # set in your shell; see README
