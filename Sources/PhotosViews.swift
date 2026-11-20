@@ -27,6 +27,8 @@ struct LatestAlbums: View {
                     }
                 }.padding(.vertical, 4)
             }
+            // Only sideways: stops the strip from also bouncing up and down inside the list.
+            .scrollBounceBehavior(.basedOnSize, axes: .vertical)
         }
         .frame(height: 190)
         .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 0))
@@ -103,6 +105,34 @@ struct AlbumView: View {
 
 struct PhotoIndex: Identifiable { var id: Int { index }; let index: Int }
 
+/// One full-size photo that zooms with a pinch or a double tap (up to 5x).
+struct ZoomablePhoto: View {
+    let url: URL
+    @State private var scale: CGFloat = 1
+    @State private var lastScale: CGFloat = 1
+
+    var body: some View {
+        AsyncImage(url: url) { img in
+            img.resizable().scaledToFit()
+                .scaleEffect(scale)
+                .gesture(
+                    MagnifyGesture()
+                        .onChanged { v in scale = min(max(lastScale * v.magnification, 1), 5) }
+                        .onEnded { _ in
+                            withAnimation { if scale < 1.05 { scale = 1 } }
+                            lastScale = scale
+                        }
+                )
+                .onTapGesture(count: 2) {
+                    withAnimation { scale = scale > 1 ? 1 : 2.5 }
+                    lastScale = scale
+                }
+        } placeholder: {
+            ProgressView().tint(.white)
+        }
+    }
+}
+
 struct PhotoPager: View {
     let photos: [URL]
     @State var start: Int
@@ -115,8 +145,7 @@ struct PhotoPager: View {
             Color.black.ignoresSafeArea()
             TabView(selection: $start) {
                 ForEach(Array(photos.enumerated()), id: \.offset) { i, url in
-                    AsyncImage(url: url) { $0.resizable().scaledToFit() } placeholder: { ProgressView().tint(.white) }
-                        .tag(i)
+                    ZoomablePhoto(url: url).tag(i)
                 }
             }
             .tabViewStyle(.page(indexDisplayMode: .never))

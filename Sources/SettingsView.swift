@@ -4,6 +4,7 @@ import SwiftUI
 /// Preferences are read from the website; changing them happens on vipsite.nl in the logged-in web view.
 struct SettingsView: View {
     @EnvironmentObject var state: AppState
+    @AppStorage("appearance") private var appearance = "system"
     @State private var showEdit = false
 
     var body: some View {
@@ -29,11 +30,14 @@ struct SettingsView: View {
                 }
             }
 
-            Section("Calendar") {
-                Button {
-                    Task { if let url = try? await Scraper.calendarFeed() { await UIApplication.shared.open(url) } }
-                } label: { Label("Add my VIP events to my calendar", systemImage: "calendar.badge.plus") }
-                .disabled(state.status != .loggedIn)
+            Section {
+                Picker("Theme", selection: $appearance) {
+                    Text("Match phone").tag("system")
+                    Text("Light").tag("light")
+                    Text("Dark").tag("dark")
+                }
+            } header: { Text("Appearance") } footer: {
+                Text("\"Match phone\" follows the iPhone's light or dark setting.")
             }
 
             Section("Account") {

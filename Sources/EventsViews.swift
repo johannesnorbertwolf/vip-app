@@ -1,8 +1,9 @@
 import SwiftUI
 
 struct EventsView: View {
-    enum Mode: String, CaseIterable { case list = "List", calendar = "Calendar", gallery = "Gallery" }
+    enum Mode: String, CaseIterable { case list = "List", calendar = "Calendar" }
     @AppStorage("eventsMode") private var mode: Mode = .list
+    @AppStorage("showPosters") private var showPosters = false
     @EnvironmentObject var state: AppState
 
     var body: some View {
@@ -10,12 +11,12 @@ struct EventsView: View {
             Group {
                 switch mode {
                 case .list:
-                    List(events) { e in NavigationLink(value: e) { EventRow(event: e) } }
-                        .listStyle(.plain)
+                    List(events) { e in
+                        NavigationLink(value: e) { EventRow(event: e, showPoster: showPosters) }
+                    }
+                    .listStyle(.plain)
                 case .calendar:
                     EventCalendarView(events: events)
-                case .gallery:
-                    EventGalleryView(events: events)
                 }
             }
             .overlay { if events.isEmpty { ContentUnavailableView("No upcoming events", systemImage: "calendar") } }
@@ -32,6 +33,14 @@ struct EventsView: View {
         .navigationBarTitleDisplayMode(.inline)
         .navigationDestination(for: EventSummary.self) { EventDetailView(path: $0.path, fallbackTitle: $0.title) }
         .toolbar {
+            if mode == .list {
+                ToolbarItem {
+                    Toggle(isOn: $showPosters) {
+                        Label("Show posters", systemImage: showPosters ? "photo.fill" : "photo")
+                    }
+                    .toggleStyle(.button)
+                }
+            }
             if state.status == .loggedIn {
                 ToolbarItem {
                     Button { Task { await subscribe() } } label: { Label("Add to calendar", systemImage: "calendar.badge.plus") }
@@ -46,7 +55,7 @@ struct EventsView: View {
     }
 }
 
-// MARK: Calendar view: month grid with a dot on days that have events; tap a day to see them.
+// MARK: Calendar view: a month grid with the event names inside each day. Tap a day for its details.
 
 struct EventCalendarView: View {
     let events: [EventSummary]
@@ -68,51 +77,68 @@ struct EventCalendarView: View {
                 .padding(.horizontal)
 
                 let symbols = Array(cal.veryShortWeekdaySymbols[(cal.firstWeekday - 1)...] + cal.veryShortWeekdaySymbols[..<(cal.firstWeekday - 1)])
-                LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 7), spacing: 8) {
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 2), count: 7), spacing: 2) {
                     ForEach(Array(symbols.enumerated()), id: \.offset) { _, s in
                         Text(s).font(.caption.bold()).foregroundStyle(.secondary)
                     }
                     ForEach(Array(days().enumerated()), id: \.offset) { _, day in
-                        if let day { dayCell(day) } else { Color.clear.frame(height: 40) }
+                        if let day { dayCell(day) } else { Color.clear.frame(minHeight: 66) }
                     }
                 }
-                .padding(.horizontal, 8)
+                .padding(.horizontal, 6)
 
-                let shown = selected.map(eventsOn) ?? eventsIn(month)
-                VStack(alignment: .leading, spacing: 0) {
-                    Text(selected.map { $0.formatted(.dateTime.weekday(.wide).day().month()) } ?? "This month")
-                        .font(.headline).padding(.horizontal).padding(.bottom, 6)
-                    if shown.isEmpty {
-                        Text("No events").foregroundStyle(.secondary).padding(.horizontal)
+                if let selected {
+                    VStack(alignment: .leading, spacing: 0) {
+                        Text(selected.formatted(.dateTime.weekday(.wide).day().month()))
+                            .font(.headline).padding(.horizontal).padding(.bottom, 6)
+                        let shown = eventsOn(selected)
+                        if shown.isEmpty {
+                            Text("No events").foregroundStyle(.secondary).padding(.horizontal)
+                        }
+                        ForEach(shown) { e in
+                            NavigationLink(value: e) { EventRow(event: e, showPoster: false).padding(.horizontal) }
+                                .buttonStyle(.plain)
+                            Divider().padding(.leading)
+                        }
                     }
-                    ForEach(shown) { e in
-                        NavigationLink(value: e) { EventRow(event: e).padding(.horizontal) }
-                            .buttonStyle(.plain)
-                        Divider().padding(.leading)
-                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
             }
             .padding(.vertical)
         }
     }
 
     func dayCell(_ day: Date) -> some View {
-        let has = !eventsOn(day).isEmpty
+        let dayEvents = eventsOn(day)
         let isSel = selected.map { cal.isDate($0, inSameDayAs: day) } ?? false
         let isToday = cal.isDateInToday(day)
         return Button { selected = isSel ? nil : day } label: {
-            VStack(spacing: 3) {
+            VStack(spacing: 2) {
                 Text("\(cal.component(.day, from: day))")
-                    .font(.body.monospacedDigit().weight(isToday ? .bold : .regular))
+                    .font(.footnote.monospacedDigit().weight(isToday ? .bold : .regular))
                     .foregroundStyle(isSel ? .white : (isToday ? Color.vip : .primary))
-                Circle().fill(has ? (isSel ? .white : Color.vip) : .clear).frame(width: 5, height: 5)
+                ForEach(Array(dayEvents.prefix(2).enumerated()), id: \.offset) { _, e in
+                    Text(e.title)
+                        .font(.system(size: 8, weight: .semibold))
+                        .lineLimit(2)
+                        .multilineTextAlignment(.leading)
+                        .foregroundStyle(isSel ? .white : Color.vip)
+                        .padding(.horizontal, 2).padding(.vertical, 1)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(isSel ? Color.white.opacity(0.25) : Color.vip.opacity(0.14), in: RoundedRectangle(cornerRadius: 3))
+                }
+                if dayEvents.count > 2 {
+                    Text("+\(dayEvents.count - 2)").font(.system(size: 8, weight: .bold)).foregroundStyle(isSel ? .white : .secondary)
+                }
+                Spacer(minLength: 0)
             }
-            .frame(maxWidth: .infinity, minHeight: 40)
-            .background(isSel ? Color.vip : .clear, in: RoundedRectangle(cornerRadius: 8))
+            .padding(.top, 3)
+            .frame(maxWidth: .infinity, minHeight: 66, alignment: .top)
+            .background(isSel ? Color.vip : .clear, in: RoundedRectangle(cornerRadius: 6))
+            .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.secondary.opacity(0.15)))
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(day.formatted(date: .complete, time: .omitted) + (has ? ", has events" : ""))
+        .accessibilityLabel(day.formatted(date: .complete, time: .omitted) + (dayEvents.isEmpty ? "" : ", \(dayEvents.count) events"))
     }
 
     func days() -> [Date?] {
@@ -123,72 +149,50 @@ struct EventCalendarView: View {
     }
 
     func eventsOn(_ day: Date) -> [EventSummary] { events.filter { $0.date.map { cal.isDate($0, inSameDayAs: day) } ?? false } }
-    func eventsIn(_ m: Date) -> [EventSummary] { events.filter { $0.date.map { cal.isDate($0, equalTo: m, toGranularity: .month) } ?? false } }
     func shift(_ n: Int) { month = cal.date(byAdding: .month, value: n, to: month) ?? month; selected = nil }
-}
-
-// MARK: Gallery view: event posters in a grid.
-
-struct EventGalleryView: View {
-    let events: [EventSummary]
-    var body: some View {
-        ScrollView {
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 160), spacing: 12)], spacing: 16) {
-                ForEach(events) { e in
-                    NavigationLink(value: e) {
-                        VStack(alignment: .leading, spacing: 6) {
-                            Color.secondary.opacity(0.12)
-                                .aspectRatio(1, contentMode: .fit)
-                                .overlay {
-                                    AsyncImage(url: e.imageURL) { $0.resizable().scaledToFill() } placeholder: {
-                                        Image(systemName: "calendar").font(.largeTitle).foregroundStyle(Color.vip.opacity(0.4))
-                                    }
-                                }
-                                .overlay(alignment: .topLeading) {
-                                    VStack(spacing: 0) {
-                                        Text(e.day).font(.headline.monospacedDigit())
-                                        Text(e.month.uppercased()).font(.caption2.bold())
-                                    }
-                                    .foregroundStyle(.white).padding(6)
-                                    .background(Color.vip, in: RoundedRectangle(cornerRadius: 8)).padding(8)
-                                }
-                                .clipShape(RoundedRectangle(cornerRadius: 12))
-                            Text(e.title).font(.subheadline.weight(.semibold)).lineLimit(2).multilineTextAlignment(.leading)
-                            Text(e.category).font(.caption).foregroundStyle(.secondary)
-                        }
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-            .padding()
-        }
-    }
 }
 
 struct EventRow: View {
     let event: EventSummary
-    var body: some View {
-        HStack(alignment: .top, spacing: 12) {
-            VStack(spacing: 0) {
-                Text(event.day).font(.title2.bold()).monospacedDigit()
-                Text(event.month.uppercased()).font(.caption2.bold())
-            }
-            .foregroundStyle(.white)
-            .frame(width: 52, height: 56)
-            .background(Color.vip, in: RoundedRectangle(cornerRadius: 10))
+    var showPoster = false
 
-            VStack(alignment: .leading, spacing: 4) {
-                Text(event.title).font(.headline)
-                Text(event.when).font(.subheadline).foregroundStyle(.secondary)
-                if !event.category.isEmpty {
-                    Text(event.category).font(.caption.weight(.semibold))
-                        .padding(.horizontal, 8).padding(.vertical, 2)
-                        .background(Color.vip.opacity(0.12), in: Capsule())
-                        .foregroundStyle(Color.vip)
+    var body: some View {
+        if showPoster {
+            HStack(alignment: .top, spacing: 12) {
+                AsyncImage(url: event.imageURL) { $0.resizable().scaledToFill() } placeholder: {
+                    Color.secondary.opacity(0.12).overlay(Image(systemName: "calendar").foregroundStyle(Color.vip.opacity(0.4)))
                 }
+                .frame(width: 84, height: 84)
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+                info
+            }
+            .padding(.vertical, 4)
+        } else {
+            HStack(alignment: .top, spacing: 12) {
+                VStack(spacing: 0) {
+                    Text(event.day).font(.title2.bold()).monospacedDigit()
+                    Text(event.month.uppercased()).font(.caption2.bold())
+                }
+                .foregroundStyle(.white)
+                .frame(width: 52, height: 56)
+                .background(Color.vip, in: RoundedRectangle(cornerRadius: 10))
+                info
+            }
+            .padding(.vertical, 4)
+        }
+    }
+
+    var info: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(event.title).font(.headline)
+            Text(event.when).font(.subheadline).foregroundStyle(.secondary)
+            if !event.category.isEmpty {
+                Text(event.category).font(.caption.weight(.semibold))
+                    .padding(.horizontal, 8).padding(.vertical, 2)
+                    .background(Color.vip.opacity(0.12), in: Capsule())
+                    .foregroundStyle(Color.vip)
             }
         }
-        .padding(.vertical, 4)
     }
 }
 

@@ -28,11 +28,23 @@ final class AppState: ObservableObject {
 @main
 struct VIPApp: App {
     @StateObject private var state = AppState()
+    @AppStorage("appearance") private var appearance = "system"
+
+    /// nil follows the phone's light/dark setting.
+    private var scheme: ColorScheme? {
+        switch appearance {
+        case "light": .light
+        case "dark": .dark
+        default: nil
+        }
+    }
+
     var body: some Scene {
         WindowGroup {
             RootView()
                 .environmentObject(state)
                 .tint(.vip)
+                .preferredColorScheme(scheme)
                 .task { await state.check() }
         }
     }
